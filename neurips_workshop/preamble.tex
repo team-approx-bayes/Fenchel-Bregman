@@ -1,0 +1,130 @@
+\usepackage{xcolor}
+
+\definecolor{linkpurple}{RGB}{90,40,90}
+\definecolor{pdrblue}{RGB}{37,99,235}
+\definecolor{green}{HTML}{10B981}
+
+\usepackage{hyperref}       % hyperlinks
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkpurple,
+  citecolor=green!50!black,
+  urlcolor=blue!50!black
+}
+ 
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+% \usepackage[svgnames]{xcolor}         % colors
+
+\usepackage{amsmath,amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage{bm}
+\usepackage{enumitem}
+\usepackage{ulem}
+\usepackage{cleveref}
+\usepackage{pifont}
+\usepackage[most]{tcolorbox}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% package for table
+\usepackage{multirow}
+\usepackage{caption} 
+% \captionsetup[table]{skip=10pt}
+\usepackage{adjustbox}
+\usepackage{color, colortbl}
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{makecell}
+
+% package for wraptable
+\usepackage{wrapfig,lipsum}
+
+% package for theorem
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{assumption}{Assumption}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+%% takeaway box
+\newtcolorbox{takeaway}{
+  enhanced,
+  colback=pdrblue!4,
+  colframe=pdrblue!70!black,
+  boxrule=0.75pt,
+  arc=1.8pt,
+  left=6pt,right=6pt,top=4pt,bottom=4pt,
+  before skip=6pt,after skip=7pt,
+  fontupper=\small
+}
+
+% Draft-review markers. Keep draft mode on while writing. In clean mode,
+% revisions become plain text and every unresolved marker stops the build.
+\newif\ifdraftmarks
+\draftmarksfalse
+\definecolor{draftrevision}{HTML}{2563EB}
+\definecolor{draftpending}{HTML}{7C3AED}
+\definecolor{draftplaceholder}{HTML}{DC2626}
+\definecolor{draftverify}{HTML}{D97706}
+
+\newcommand{\draftmarkererror}[1]{%
+  \PackageError{RAAAI draft markers}{Unresolved #1 marker remains}{%
+    Resolve this marker before building the clean submission copy.}%
+}
+\newcommand{\cd}[1]{%
+  \ifdraftmarks\textcolor{draftrevision}{#1}\else#1\fi%
+}
+\newcommand{\rev}[1]{\cd{#1}}
+\newcommand{\resultpending}[1]{%
+  \ifdraftmarks
+    \textcolor{draftpending}{[\textbf{RESULT PENDING}: #1]}%
+  \else
+    \draftmarkererror{RESULT PENDING}%
+  \fi%
+}
+\newcommand{\placeholder}[1]{%
+  \ifdraftmarks
+    \textcolor{draftplaceholder}{[\textbf{PLACEHOLDER}: #1]}%
+  \else
+    \draftmarkererror{PLACEHOLDER}%
+  \fi%
+}
+\newcommand{\verify}[1]{%
+  \ifdraftmarks
+    \textcolor{draftverify}{[\textbf{VERIFY}: #1]}%
+  \else
+    \draftmarkererror{VERIFY}%
+  \fi%
+}
+\newcommand{\pendingcell}[1]{%
+  \ifdraftmarks
+    \cellcolor{draftpending!12}%
+    \textcolor{draftpending}{\textbf{\scriptsize pending}}%
+  \else
+    \draftmarkererror{RESULT PENDING (#1)}%
+  \fi%
+}
+
+\definecolor{avgrowgray}{gray}{0.9}
+\newcolumntype{a}{>{\columncolor{avgrowgray}}c}
+
+\definecolor{gaegreen}{HTML}{10B981}
+\definecolor{gaerowhighlight}{HTML}{E6F9F1}
+
+% \newtheorem{definition}{Definition}
+% \newtheorem{proposition}{Proposition}
+% \newtheorem{remark}{Remark}
+
+\newcommand{\new}[1]{\textbf{\textcolor{blue}{#1}}}
+\newcommand{\hl}[1]{\textbf{\textcolor{teal}{#1}}}
+\newcommand{\open}[1]{\textbf{\textcolor{orange}{[Open] #1}}}
+\newcommand{\todo}[1]{\textbf{\textcolor{red}{[TODO] #1}}}
+\newcommand{\hypo}[1]{\textbf{\textcolor{violet}{[Hypothesis] #1}}}

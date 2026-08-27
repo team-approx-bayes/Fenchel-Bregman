@@ -1,0 +1,262 @@
+\section{Finite-$K$ and dual-state derivations}
+\label{app:proofs}
+
+\subsection{Binary target and direct Monte Carlo estimation}
+\label{app:finite-k-details}
+
+Let $p_\phi(x)=\mathbb E_{\theta\sim q_\phi}[F(\theta,x)]$ denote the failure probability of one posterior-sampled solver.
+For independent draws $\theta_{1:K}\sim q_\phi$,
+\begin{equation}
+  \Pr(\text{all $K$ draws fail}\mid x)
+  =
+  \mathbb E\left[\prod_{k=1}^K F(\theta_k,x)\right]
+  =
+  p_\phi(x)^K.
+  \label{eq:app-binary-finite-k}
+\end{equation}
+Hence, the probability of at least one success is $1-p_\phi(x)^K$, which is the corresponding Pass@$K$ probability.
+For binary indicators, the product equals the indicator that all $K$ draws fail.
+The product therefore represents the deployment event rather than an additional modeling assumption.
+
+Replacing $F$ with the differentiable score $f$ preserves the product across independent draws.
+Independence gives
+\begin{equation}
+  \mathbb E\left[\prod_{k=1}^K f(\theta_k,x)\right]
+  =
+  \prod_{k=1}^K\mathbb E[f(\theta_k,x)]
+  =
+  \bar f_\phi(x)^K.
+  \label{eq:app-soft-finite-k}
+\end{equation}
+Thus, the $K$-draw product is an unbiased estimator of the finite-$K$ data term.
+Reusing one draw estimates $\mathbb E[f(\theta,x)^K]$.
+For $K>1$, Jensen's inequality gives $\mathbb E[f^K]\geq\mathbb E[f]^K$, with equality only in special cases.
+In the binary limit, $F^K=F$, so the reused-draw objective reduces to the one-draw failure probability.
+
+\subsection{Derivation of the Fenchel representation}
+\label{app:fenchel-proof}
+
+For $K\geq2$, consider $h_r(\lambda)=\lambda r-\psi_K(\lambda)$ on $[0,K]$.
+Its derivative on $(0,K)$ is
+\begin{equation}
+  h_r'(\lambda)
+  =
+  r-\left(\frac{\lambda}{K}\right)^{1/(K-1)}.
+  \label{eq:app-fenchel-derivative}
+\end{equation}
+The unique stationary point is $\lambda^\star(r)=Kr^{K-1}$, which lies in $[0,K]$ for $r\in[0,1]$.
+Substitution gives
+\begin{equation}
+  h_r(\lambda^\star(r))
+  =
+  Kr^{K-1}r-(K-1)r^K
+  =
+  r^K.
+  \label{eq:app-fenchel-substitution}
+\end{equation}
+Because $\psi_K$ is strictly convex, $h_r$ is strictly concave and this stationary point is the unique maximizer for $r\in(0,1)$.
+The boundary cases give $\lambda^\star(0)=0$ and $\lambda^\star(1)=K$.
+The case $K=1$ needs no Fenchel step because the objective is linear in $r$.
+
+\subsection{Fixed-dual one-draw gradient}
+\label{app:fixed-dual-gradient}
+
+Assume that $q_\phi$ admits a differentiable reparameterization $\theta=T_\phi(\epsilon)$ whose base distribution does not depend on $\phi$.
+Also assume that an integrable dominating function permits differentiation under the expectation.
+For a fixed detached dual state $\lambda_x$,
+\begin{align}
+  \nabla_\phi\mathbb E_{q_\phi}[\lambda_x f(\theta,x)]
+  &=
+  \nabla_\phi\mathbb E_\epsilon[\lambda_x f(T_\phi(\epsilon),x)]
+  \notag\\
+  &=
+  \mathbb E_\epsilon[\nabla_\phi\{\lambda_x f(T_\phi(\epsilon),x)\}].
+  \label{eq:app-fixed-dual-gradient}
+\end{align}
+One draw of $\epsilon$, or equivalently one $\theta\sim q_\phi$, therefore gives an unbiased stochastic gradient of the fixed-dual data term.
+Moreover,
+\begin{equation}
+  \nabla_\phi\bar f_\phi(x)^K
+  =
+  K\bar f_\phi(x)^{K-1}\nabla_\phi\bar f_\phi(x)
+  =
+  \lambda^\star(\bar f_\phi(x))\nabla_\phi\bar f_\phi(x).
+  \label{eq:app-finite-k-gradient}
+\end{equation}
+The fixed-dual gradient coincides with the finite-$K$ data gradient when $\lambda_x=\lambda^\star(\bar f_\phi(x))$.
+For a lagged dual state, unbiasedness holds conditionally for the fixed-dual objective.
+
+\subsection{Dual coordinate and Bregman update}
+\label{app:bregman-proof}
+
+\begin{lemma}[Dual coordinate]
+\label{lem:dual-coordinate}
+For integer $K\geq2$ and $\lambda\in[0,K]$, the derivative $\psi_K'(\lambda)=(\lambda/K)^{1/(K-1)}$ is a strictly increasing bijection from $[0,K]$ to $[0,1]$.
+Its inverse is $(\psi_K')^{-1}(u)=Ku^{K-1}$ for $u\in[0,1]$, and $\psi_K'(\lambda^\star(r))=r$.
+\end{lemma}
+
+\begin{proof}
+Direct differentiation gives the stated derivative, including its continuous extension at zero.
+The derivative increases from zero to one on $[0,K]$.
+Solving $u=(\lambda/K)^{1/(K-1)}$ gives the inverse, and substituting $\lambda^\star(r)=Kr^{K-1}$ gives the final identity.
+\end{proof}
+
+\begin{proposition}[Bregman-proximal dual update]
+\label{prop:bregman-update}
+Let $K\geq2$, $\eta>0$, $\lambda_{x,t}\in[0,K]$, and $f_t\in[0,1]$.
+If $\widehat f_{x,t-1}=\psi_K'(\lambda_{x,t})$ and $\beta=1/(1+\eta)$, then the unique maximizer in \cref{eq:dual-prox} is given by \cref{eq:dual-ema}.
+\end{proposition}
+
+\begin{proof}
+Expanding the Bregman divergence in \cref{eq:dual-prox} and dropping terms independent of $\lambda$ gives
+\begin{equation}
+  Q_t(\lambda)
+  =
+  \left(f_t+\frac{\widehat f_{x,t-1}}{\eta}\right)\lambda
+  -
+  \left(1+\frac{1}{\eta}\right)\psi_K(\lambda)
+  +\mathrm{const}.
+  \label{eq:app-bregman-expanded}
+\end{equation}
+Strict convexity of $\psi_K$ makes $Q_t$ strictly concave.
+The first-order condition gives
+\begin{equation}
+  \psi_K'(\lambda_{x,t+1})
+  =
+  \frac{\widehat f_{x,t-1}+\eta f_t}{1+\eta}
+  =
+  \beta\widehat f_{x,t-1}+(1-\beta)f_t.
+  \label{eq:app-bregman-coordinate}
+\end{equation}
+The right-hand side lies in $[0,1]$, so \cref{lem:dual-coordinate} covers the interior and both boundary cases.
+Applying $(\psi_K')^{-1}$ yields $\lambda_{x,t+1}=K\widehat f_{x,t}^{K-1}$.
+\end{proof}
+
+\subsection{Indexing and the lagged dual state}
+\label{app:dual-indexing}
+
+The implementation follows the order
+\begin{equation}
+  \widehat f_{x,t-1}
+  \longrightarrow
+  \lambda_{x,t}=K\widehat f_{x,t-1}^{K-1}
+  \longrightarrow
+  \theta_t\sim q_{\phi_t}
+  \longrightarrow
+  f_{x,t}
+  \longrightarrow
+  \widehat f_{x,t}.
+  \label{eq:app-lagged-indexing}
+\end{equation}
+Let $\mathcal H_{t-1}$ denote the training history before drawing $\theta_t$.
+The state $\lambda_{x,t}$ is measurable with respect to $\mathcal H_{t-1}$ and is fixed before the current posterior sample.
+The one-draw gradient result therefore applies conditionally on this history.
+Detaching a dual state formed from the current sample blocks its autograd path but does not make it statistically independent of that sample.
+Using the lagged state avoids this dependence.
+
+\subsection{Stationary stochastic tracking}
+\label{app:stationary-tracking}
+
+\begin{proposition}[Stationary stochastic tracking]
+\label{prop:stationary-tracking}
+Fix $K\geq2$ and $\beta\in(0,1)$.
+Let $f_t\in[0,1]$ satisfy $\mathbb E[f_t\mid\mathcal H_{t-1}]=r$ and $\mathbb E[(f_t-r)^2\mid\mathcal H_{t-1}]\leq\sigma^2$ for fixed $r\in[0,1]$.
+For $\widehat f_t=\beta\widehat f_{t-1}+(1-\beta)f_t$, $\lambda_{t+1}=K\widehat f_t^{K-1}$, and $\lambda^\star=Kr^{K-1}$,
+\begin{align}
+  \mathbb E[\widehat f_t]-r
+  &=\beta^t(\widehat f_0-r),
+  \label{eq:stationary-bias}\\
+  \mathbb E[(\widehat f_t-r)^2]
+  &\leq
+  \beta^{2t}(\widehat f_0-r)^2
+  +
+  \sigma^2\frac{1-\beta}{1+\beta}(1-\beta^{2t}),
+  \label{eq:stationary-mse}\\
+  \mathbb E[(\lambda_{t+1}-\lambda^\star)^2]
+  &\leq
+  K^2(K-1)^2\mathbb E[(\widehat f_t-r)^2].
+  \label{eq:stationary-dual}
+\end{align}
+The Fenchel inner-max gap $\Delta_t=r^K-[\lambda_{t+1}r-\psi_K(\lambda_{t+1})]$ satisfies
+\begin{equation}
+  0\leq\mathbb E[\Delta_t]
+  \leq
+  \frac{K(K-1)}{2}\mathbb E[(\widehat f_t-r)^2].
+  \label{eq:stationary-gap}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Set $e_t=\widehat f_t-r$ and $\xi_t=f_t-r$.
+Then $e_t=\beta e_{t-1}+(1-\beta)\xi_t$ and $\mathbb E[\xi_t\mid\mathcal H_{t-1}]=0$.
+Taking expectations gives \cref{eq:stationary-bias}.
+Squaring, conditioning, and unrolling the resulting recursion gives \cref{eq:stationary-mse}.
+For $g(u)=Ku^{K-1}$ on $[0,1]$, the bound $|g'(u)|\leq K(K-1)$ and the mean-value theorem give \cref{eq:stationary-dual}.
+Finally, $\psi_K'(\lambda^\star)=r$ implies $\Delta_t=D_{\psi_K}(\lambda_{t+1},\lambda^\star)$.
+Writing $u=\widehat f_t$ and integrating the derivative of $r^K-Kru^{K-1}+(K-1)u^K$ between $r$ and $u$ gives \cref{eq:stationary-gap}.
+\end{proof}
+
+\subsection{Non-stationary stochastic tracking}
+\label{app:nonstationary-tracking}
+
+\begin{proposition}[Non-stationary stochastic tracking]
+\label{prop:nonstationary-tracking}
+Fix $K\geq2$ and $\beta\in(0,1)$.
+Let $r_t=\mathbb E[f_t\mid\mathcal H_{t-1}]$, $\xi_t=f_t-r_t$, and $\mathbb E[\xi_t^2\mid\mathcal H_{t-1}]\leq\sigma_t^2$.
+Define $e_t=\widehat f_{t-1}-r_t$, $\lambda_t=K\widehat f_{t-1}^{K-1}$, and $\lambda_t^\star=Kr_t^{K-1}$.
+Then
+\begin{equation}
+  e_t
+  =
+  \beta^{t-1}e_1
+  +(1-\beta)\sum_{j=1}^{t-1}\beta^{t-1-j}\xi_j
+  -\sum_{j=1}^{t-1}\beta^{t-1-j}(r_{j+1}-r_j).
+  \label{eq:nonstationary-recursion}
+\end{equation}
+Consequently,
+\begin{align}
+  \|e_t\|_2
+  &\leq
+  \beta^{t-1}\|e_1\|_2
+  +
+  \sum_{j=1}^{t-1}\beta^{t-1-j}\|r_{j+1}-r_j\|_2
+  \notag\\
+  &\quad+
+  (1-\beta)
+  \left(\sum_{j=1}^{t-1}\beta^{2(t-1-j)}\sigma_j^2\right)^{1/2}.
+  \label{eq:nonstationary-bound}
+\end{align}
+If $\|r_{t+1}-r_t\|_2\leq\delta$ and $\sigma_t\leq\sigma$, then
+\begin{equation}
+  \limsup_{t\to\infty}\|e_t\|_2
+  \leq
+  \frac{\delta}{1-\beta}
+  +
+  \sigma\sqrt{\frac{1-\beta}{1+\beta}}.
+  \label{eq:nonstationary-limit}
+\end{equation}
+With $\rho_t=\max\{\widehat f_{t-1},r_t\}$, the dual error and instantaneous Fenchel gap $\Gamma_t=r_t^K-[\lambda_t r_t-\psi_K(\lambda_t)]$ satisfy
+\begin{align}
+  |\lambda_t-\lambda_t^\star|
+  &\leq K(K-1)\rho_t^{K-2}|e_t|,
+  \label{eq:nonstationary-dual}\\
+  0\leq\Gamma_t
+  &\leq\frac{K(K-1)}{2}\rho_t^{K-2}e_t^2.
+  \label{eq:nonstationary-gap}
+\end{align}
+\end{proposition}
+
+\begin{proof}
+The EMA recursion gives $e_{t+1}=\beta e_t+(1-\beta)\xi_t-(r_{t+1}-r_t)$.
+Unrolling it yields \cref{eq:nonstationary-recursion}.
+The martingale-difference property removes cross terms in the squared norm of the noise sum.
+The triangle inequality in $L_2$ then gives \cref{eq:nonstationary-bound}.
+Bounding the drift and noise terms by geometric series gives \cref{eq:nonstationary-limit}.
+Factoring the difference between $\widehat f_{t-1}^{K-1}$ and $r_t^{K-1}$ gives \cref{eq:nonstationary-dual}.
+The identity $\Gamma_t=D_{\psi_K}(\lambda_t,\lambda_t^\star)$ and the same integral argument as in \cref{prop:stationary-tracking} give \cref{eq:nonstationary-gap}.
+\end{proof}
+
+The bounds separate sampling noise from drift in the posterior failure rate.
+Increasing $\beta$ reduces the noise term but increases the lag term $\delta/(1-\beta)$.
+These results guarantee tracking of the dual state, not convergence of the full neural-network optimization.
+

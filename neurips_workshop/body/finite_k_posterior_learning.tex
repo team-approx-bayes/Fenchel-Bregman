@@ -1,0 +1,175 @@
+\section{Finite-\texorpdfstring{$K$}{K} posterior learning}
+\label{sec:finite-k}
+
+We formulate the exact all-fail risk under the prescribed inference protocol and obtain a differentiable finite-$K$ surrogate for posterior learning (\cref{sec:problem-setting}).
+Fenchel conjugacy introduces a per-problem dual state that makes the surrogate's posterior-dependent term a one-draw expectation (\cref{sec:fenchel}).
+We update this state from running failure estimates through a Bregman update, and its tracking gap measures the error from using a lagged dual state in the surrogate objective (\cref{sec:bregman-tracking}).
+
+\subsection{Posterior learning for fixed sampling budgets}
+\label{sec:problem-setting}
+
+Many reasoning problems admit multiple solution paths, so a single solver execution can fail even when another succeeds.
+Multi-sample inference uses a fixed budget of $K$ executions to increase the chance that the candidate pool contains a successful solution.
+We make the candidate-generating distribution trainable by learning a posterior $q_\phi(\theta)$ over solver parameters, regularized toward a prior $p_0(\theta)$.
+At inference, we draw $K$ parameter samples from this posterior and run each sampled solver at the prescribed reasoning depth $D$.
+The selector associated with the underlying reasoning method then chooses or aggregates their outputs.
+We retain that selector and its established training protocol to isolate posterior learning from selector design.
+Learning a new selector or co-training the selector and posterior is a complementary research direction.
+Our objective targets candidate coverage.
+The retained selector determines which candidate the system returns.
+
+For problem $x$, let $F(\theta,x)\in\{0,1\}$ denote the exact failure indicator for solver $\theta$ at depth $D$, with $F=1$ for failure.
+For independent draws $\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi$,
+\begin{align}
+  \Pr(\text{all $K$ solvers fail}\mid x)
+  & =
+  \mathbb E_{\theta_{1:K}}
+  \left[
+    \prod_{k=1}^K F(\theta_k,x)
+  \right]
+  \notag\\
+  & =
+  \left(
+    \mathbb E_{\theta\sim q_\phi}[F(\theta,x)]
+  \right)^K.
+  \label{eq:binary-all-fail}
+\end{align}
+The product is the all-fail indicator.
+Independence yields the $K$-th power, so minimizing it maximizes Pass@$K$.
+
+This all-fail probability induces the regularized exact target
+\begin{equation}
+  \min_\phi
+  \mathbb E_x
+  \left[
+    \left(
+      \mathbb E_{\theta\sim q_\phi}[F(\theta,x)]
+    \right)^K
+  \right]
+  +
+  \tau_{\mathrm{KL}}D_{\mathrm{KL}}(q_\phi\Vert p_0).
+  \label{eq:exact-finite-k-objective}
+\end{equation}
+The data term is the expected all-fail probability, and the KL term regularizes the solver posterior toward $p_0$~\citep{bissiri2016general,lacostejulien2011losscalibrated}.
+
+The discrete indicator $F$ does not provide a pathwise gradient through the solver.
+We therefore replace it during training with a differentiable failure score $f(\theta,x)\in[0,1]$ and write $\bar f_\phi(x)\coloneqq\mathbb E_{\theta\sim q_\phi}[f(\theta,x)]$ for its posterior mean.
+The resulting differentiable training objective is
+\begin{equation}
+  \min_\phi
+  \mathbb E_x[\bar f_\phi(x)^K]
+  +
+  \tau_{\mathrm{KL}}D_{\mathrm{KL}}(q_\phi\Vert p_0).
+  \label{eq:finite-k-objective}
+\end{equation}
+For $K=1$, its data term reduces to the expected surrogate failure of one posterior draw.
+When $f=F$, the optimization problems in \cref{eq:finite-k-objective,eq:exact-finite-k-objective} coincide; otherwise, \cref{eq:finite-k-objective} serves as a smooth proxy for the exact all-fail risk.
+
+\subsection{One-draw min--max posterior learning}
+\label{sec:fenchel}
+
+The product of $K$ independent failure scores is an unbiased estimator of $\bar f_\phi(x)^K$, but computing it requires $K$ solver executions per update.
+A one-draw alternative raises one sampled failure score to the $K$-th power.
+This quantity estimates $\mathbb E_{\theta\sim q_\phi}[f(\theta,x)^K]$, whereas the finite-$K$ surrogate contains $\bigl(\mathbb E_{\theta\sim q_\phi}[f(\theta,x)]\bigr)^K$.
+We therefore seek an exact reformulation of the surrogate in \cref{eq:finite-k-objective} that avoids $K$ solver executions at every update.
+
+The finite-$K$ surrogate has an exact min--max form.
+This form makes the posterior-dependent update a one-draw expectation for a fixed dual state.
+
+Define $\psi_K(\lambda)=(K-1)(\lambda/K)^{K/(K-1)}$ on $[0,K]$.
+For $K\geq2$ and $r\in[0,1]$,
+\begin{equation}
+  r^K
+  =
+  \max_{\lambda\in[0,K]}
+  \{\lambda r-\psi_K(\lambda)\},
+  \qquad
+  \lambda^\star(r)=Kr^{K-1}.
+  \label{eq:fenchel-identity}
+\end{equation}
+Applying \cref{eq:fenchel-identity} to $r=\bar f_\phi(x)$ gives the equivalent saddle objective
+\begin{equation}
+  \min_\phi
+  \max_{\{\lambda_x\in[0,K]\}_x}
+  \left\{
+    \mathbb E_x
+    \left[
+      \mathbb E_{\theta\sim q_\phi}[\lambda_x f(\theta,x)]
+      -\psi_K(\lambda_x)
+    \right]
+    +
+    \tau_{\mathrm{KL}}D_{\mathrm{KL}}(q_\phi\Vert p_0)
+  \right\}.
+  \label{eq:saddle-objective}
+\end{equation}
+For a finite training set, \cref{eq:saddle-objective} requires one scalar dual state $\lambda_x$ for each training problem.
+
+For a fixed current value of $\lambda_x$, its posterior-dependent term is an ordinary expectation over $\theta\sim q_\phi$.
+Assume that $q_\phi$ admits a differentiable reparameterization and that differentiation can pass through the expectation.
+One posterior draw then gives an unbiased stochastic gradient of the fixed-dual term.
+The optimal dual state is $\lambda_x^\star=K\bar f_\phi(x)^{K-1}$.
+If $\lambda_x=\lambda_x^\star$, the one-draw posterior gradient equals the finite-$K$ surrogate data gradient.
+Otherwise, it remains unbiased for the current fixed-dual objective, whereas it need not equal the gradient of the nonlinear surrogate objective.
+The KL regularizer remains part of the posterior update.
+
+\subsection{Bregman update for the dual state}
+\label{sec:bregman-tracking}
+
+The optimal dual state depends on $\bar f_\phi(x)$ and changes as the posterior changes.
+Re-estimating it from multiple posterior draws at every update would remove the one-draw advantage.
+Instead, we update the dual state from the current sampled failure score $f_t=f(\theta_t,x)$.
+
+Let $D_{\psi_K}(\lambda,\mu)=\psi_K(\lambda)-\psi_K(\mu)-\psi_K'(\mu)(\lambda-\mu)$ denote the Bregman divergence generated by $\psi_K$.
+We apply the Bregman-proximal ascent step
+\begin{equation}
+  \lambda_{x,t+1}
+  =
+  \arg\max_{\lambda\in[0,K]}
+  \left\{
+    \lambda f_t-\psi_K(\lambda)
+    -\eta^{-1}D_{\psi_K}(\lambda,\lambda_{x,t})
+  \right\},
+  \qquad \eta>0.
+  \label{eq:dual-prox}
+\end{equation}
+Since $\psi_K'(\lambda)=(\lambda/K)^{1/(K-1)}$, this update has a closed form.
+With $\beta=1/(1+\eta)$ and $\widehat f_{x,t-1}=\psi_K'(\lambda_{x,t})$,
+\begin{align}
+  \widehat f_{x,t}
+  &=
+  \beta\widehat f_{x,t-1}
+  +(1-\beta)f_t,
+  \notag\\
+  \lambda_{x,t+1}
+  &=K\widehat f_{x,t}^{K-1}.
+  \label{eq:dual-ema}
+\end{align}
+The closed form reduces dual ascent to a scalar exponential moving average (EMA).
+It requires neither an inner optimization loop nor an additional solver execution.
+A larger $\beta$ suppresses sampling noise but increases lag when the posterior failure rate changes.
+
+At update $t$, we compute $\lambda_{x,t}=K\widehat f_{x,t-1}^{K-1}$ from the running estimate available before drawing $\theta_t$.
+We hold this state fixed during the posterior update.
+Afterward, we incorporate $f_t$ into $\widehat f_{x,t}$ and use the result at the next update.
+This order fixes the dual state before the current posterior sample, which gives the conditional one-draw gradient property in \cref{sec:fenchel}.
+
+\begin{algorithm}[H]
+  \caption{One-draw finite-$K$ posterior learning}
+  \label{alg:finite-k}
+  \small
+  \begin{algorithmic}[1]
+    \Require Posterior $q_\phi$, prior $p_0$, pool size $K$, coefficient $\beta$, and failure estimates $\{\widehat f_x\}$
+    \For{each training update $t$}
+      \State Set and detach $\lambda_{x,t}\gets K\widehat f_{x,t-1}^{K-1}$ for each minibatch problem $x$
+      \State Draw $\theta_t\sim q_\phi$ once and compute $f(\theta_t,x)$
+      \State Update $\phi$ with $\lambda_{x,t}f(\theta_t,x)$ and the KL regularizer while holding $\lambda_{x,t}$ fixed
+      \State Update $\widehat f_{x,t}\gets\beta\widehat f_{x,t-1}+(1-\beta)f(\theta_t,x)$
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+Direct finite-$K$ training uses $K$ solver executions per update.
+The exact min--max reformulation makes the posterior update a one-draw expectation once the current dual state is held fixed.
+The Bregman step gives a closed-form EMA update for that state without additional solver executions.
+The practical update follows the finite-$K$ data gradient to the extent that $\widehat f_{x,t-1}$ tracks $\bar f_\phi(x)$.
+

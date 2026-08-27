@@ -1,0 +1,56 @@
+\section{Related work}
+\label{sec:related-work}
+% Cover multi-sample inference, generalized/loss-calibrated Bayes,
+% variational learning, and stochastic primal--dual optimization.
+
+\subsection{Multi-sample Inference and Test-time Scaling}
+\label{sec:related-multisample}
+
+Multi-sample inference improves performance by generating multiple candidate solutions and aggregating their complementary outcomes.
+Its benefit was quantified in code generation through Pass@$K$, which measures whether at least one sampled program passes the tests~\citep{chen2021codex}.
+For reasoning tasks, self-consistency aggregates diverse reasoning paths through answer-level voting~\citep{wang2023selfconsistency}, while outcome and process verifiers rank candidate solutions using learned correctness signals~\citep{cobbe2021verifiers,lightman2024verify}.
+Structured search methods further extend this principle by expanding and pruning intermediate reasoning branches instead of sampling complete solutions independently~\citep{yao2023tree}.
+These inference procedures can be viewed as forms of test-time scaling that allocate additional compute to broader candidate exploration.
+Repeated-sampling studies demonstrate that increasing the number of attempts can substantially expand problem coverage~\citep{brown2024monkeys}, whereas systematic analyses show that the resulting gains depend on the inference algorithm, selector, model size, and allocation of compute across problems~\citep{snell2024scaling,wu2025inferencescaling}.
+Collectively, this literature establishes the sampling budget $K$ as an important inference-time resource, but generally leaves the candidate-generating distribution unchanged during training.
+
+This train--inference mismatch has motivated inference-aware learning methods that optimize the collective utility of multiple samples.
+Recent approaches directly optimize $K$-sample objectives using reinforcement learning~\citep{pmlr-v267-tang25o,walder2025pkpo}, tailor fine-tuning to best-of-$N$ selection~\citep{chow2025inferenceaware}, or modify training to preserve coverage under repeated generation~\citep{chen2025rethinking}.
+These methods align a point policy with multi-sample inference, but their updates either operate on groups of output trajectories or exploit autoregressive likelihood structure.
+Our work instead learns a posterior $q_\phi(\theta)$ over solver parameters while retaining the selector of the underlying reasoning method.
+We optimize a differentiable surrogate of the finite-$K$ all-fail risk and introduce a Fenchel reformulation with lagged per-problem dual states, such that one posterior draw yields an unbiased gradient for the fixed-dual primal subproblem.
+This provides a parameter-space formulation of inference-aware learning without executing all $K$ solvers in every primal update.
+
+\subsection{Posterior learning for reasoning}
+\label{sec:related-posterior}
+
+Researchers have used posterior distributions over model parameters to represent uncertainty and instantiate multiple neural networks from a single learned distribution.
+Bissiri et al. generalize Bayesian updating by combining task losses with KL regularization toward a prior, while loss-calibrated inference adapts posterior approximations to downstream decision utilities~\citep{bissiri2016general,lacostejulien2011losscalibrated,cobb2018losscalibrated}.
+Stochastic variational methods made neural weight distributions trainable through sampled parameters and backpropagation~\citep{graves2011practical,blundell2015weight}, and natural-gradient methods later scaled this approach to modern deep networks~\citep{osawa2019practical,shen2024variational}.
+Post-hoc alternatives such as Laplace approximations and SWAG also construct sampleable weight distributions around trained solutions~\citep{daxberger2021laplace,maddox2019swag}.
+These methods primarily optimize the expected loss of an individual sampled model or target predictive uncertainty and calibration; their posterior objectives do not account for the collective success of a fixed-size candidate pool.
+
+Recent reasoning methods have begun to use stochastic computation to explore multiple solution paths.
+GRAM learns distributions over latent reasoning trajectories, whereas PTRM injects noise into recursive latent states without learning a parameter posterior~\citep{baek2026generative,sghaier2026probabilistic}.
+More closely related approaches move exploration into parameter space: PSN-RLVR perturbs policy weights with an adaptive noise schedule, and 3PO samples one or more policies from an IVON posterior to diversify RLVR rollouts and advantage groups~\citep{bai2026parameterspacenoise,venkatkrishna2026parameter}.
+Although 3PO also learns a distribution over reasoning-model parameters, its generalized variational objective remains linear in the posterior through an expected GRPO loss, and it uses posterior samples to improve training-time exploration.
+Our method directly trains a solver-parameter posterior for the deployed inference protocol by minimizing the probability that all $K$ posterior-sampled solvers fail, while retaining the prescribed reasoning depth and selector.
+
+\subsection{Efficient optimization of multi-sample objectives}
+\label{sec:related-efficient-optimization}
+
+Training objectives that evaluate several sampled candidates together are expensive because each update must normally generate the entire candidate set.
+Direct estimators evaluate at least $K$ samples for a group of size $K$, even when they reuse subsets of a larger batch to reduce variance~\citep{hoeffding1948class,walder2025pkpo}.
+Another line of work reduces this cost by carrying information from earlier updates in a running estimate of the average sample outcome.
+SCGD introduced this approach for objectives that first average random outcomes and then score the average~\citep{wang2017scgd}.
+NASA later used a single-loop design to track both this average and the model gradient~\citep{ghadimi2020single}.
+These methods replace a fresh multi-sample estimate at every update with a state that is refined over time.
+
+For finite training sets, later methods maintain a separate running estimate for each example.
+SOX updates the estimates associated with the current minibatch and uses their previous values to form the model update, allowing each update to use only a few new samples~\citep{pmlr-v162-wang22ak}.
+ALEXR develops a Fenchel-based method for convex problems, updating a helper variable from one sample batch and the model from an independent batch~\citep{pmlr-v267-wang25dw}.
+For smooth scoring functions, its Bregman update reduces to an ordinary moving average.
+In our setting, the running state summarizes the recent failure rate of posterior-sampled solvers under fixed-$K$ inference, while the selector remains unchanged.
+We fix one scalar per problem before the current solver draw, use that draw for the posterior update, and update the scalar afterward.
+This order gives an unbiased gradient for the update with the scalar held fixed, while our tracking analysis quantifies how sampling noise and posterior changes affect the scalar and the finite-$K$ surrogate gap.
+
