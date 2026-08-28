@@ -1,37 +1,156 @@
 \section{Finite-$K$ and dual-state derivations}
 \label{app:proofs}
 
-\subsection{Binary target and direct Monte Carlo estimation}
+\subsection{Binary all-fail probability and direct Monte Carlo estimation}
 \label{app:finite-k-details}
 
-Let $p_\phi(x)=\mathbb E_{\theta\sim q_\phi}[F(\theta,x)]$ denote the failure probability of one posterior-sampled solver.
-For independent draws $\theta_{1:K}\sim q_\phi$,
+\paragraph{Probability space.}
+Fix a problem $x$.
+The problem is held fixed in the conditional probability below; randomness comes from drawing solver parameters from $q_\phi$.
+For one draw $\theta\sim q_\phi$, the map $F(\theta,x)\in\{0,1\}$ is deterministic once $\theta$ and $x$ are fixed, but it is a random variable before $\theta$ is drawn.
+Every binary random variable is Bernoulli, so $F(\theta,x)$ has failure probability
 \begin{equation}
-  \Pr(\text{all $K$ draws fail}\mid x)
+  \Pr_{\theta\sim q_\phi}\!\left(F(\theta,x)=1\right)
   =
-  \mathbb E\left[\prod_{k=1}^K F(\theta_k,x)\right]
-  =
-  p_\phi(x)^K.
-  \label{eq:app-binary-finite-k}
+  \mathbb E_{\theta\sim q_\phi}[F(\theta,x)].
+  \label{eq:app-one-draw-failure}
 \end{equation}
-Hence, the probability of at least one success is $1-p_\phi(x)^K$, which is the corresponding Pass@$K$ probability.
-For binary indicators, the product equals the indicator that all $K$ draws fail.
-The product therefore represents the deployment event rather than an additional modeling assumption.
+The equality follows from the indicator identity $\mathbb E[\mathbf 1\{A\}]=\Pr(A)$.
+It does not require $F(\theta,x)$ to output a calibrated probability: $F$ only records whether the sampled solver fails.
 
-Replacing $F$ with the differentiable score $f$ preserves the product across independent draws.
-Independence gives
+\paragraph{The all-fail event.}
+At inference, draw $\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi$.
+For each $k$, define the failure event $A_k(x)=\{F(\theta_k,x)=1\}$.
+The event that all $K$ sampled solvers fail is the intersection $A_{1:K}(x)=\bigcap_{k=1}^K A_k(x)$.
+Because each $F(\theta_k,x)$ is binary, the indicator of this intersection is
 \begin{equation}
-  \mathbb E\left[\prod_{k=1}^K f(\theta_k,x)\right]
+  \mathbf 1\{A_{1:K}(x)\}
   =
-  \prod_{k=1}^K\mathbb E[f(\theta_k,x)]
+  \prod_{k=1}^K \mathbf 1\{A_k(x)\}
   =
+  \prod_{k=1}^K F(\theta_k,x).
+  \label{eq:app-all-fail-indicator}
+\end{equation}
+The product is one only when every factor is one, and it is zero as soon as one sampled solver succeeds.
+Taking its expectation therefore gives the all-fail probability:
+\begin{align}
+  &\Pr_{\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi}
+  (\text{all $K$ solvers fail}\mid x)
+  \notag\\
+  &\quad=
+  \mathbb E_{\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi}
+  \left[\mathbf 1\{A_{1:K}(x)\}\right]
+  \notag\\
+  &\quad=
+  \mathbb E_{\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi}
+  \left[\prod_{k=1}^K F(\theta_k,x)\right].
+  \label{eq:app-all-fail-expectation}
+\end{align}
+This identity explains why the product appears inside an expectation.
+It holds for any joint distribution of $\theta_{1:K}$; independence is not needed until the next step.
+
+\paragraph{Factorization under independent sampling.}
+The prescribed inference protocol samples each $\theta_k$ independently from the same posterior.
+Its joint distribution is therefore the product measure $q_\phi^{\otimes K}$.
+Independence factors the expectation in \cref{eq:app-all-fail-expectation}:
+\begin{align}
+  &\mathbb E_{\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi}
+  \left[\prod_{k=1}^K F(\theta_k,x)\right]
+  \notag\\
+  &\quad=
+  \prod_{k=1}^K
+  \mathbb E_{\theta_k\sim q_\phi}[F(\theta_k,x)]
+  \notag\\
+  &\quad=
+  \left(
+    \mathbb E_{\theta\sim q_\phi}[F(\theta,x)]
+  \right)^K.
+  \label{eq:app-binary-finite-k}
+\end{align}
+The first equality uses independence, while the second uses the fact that all draws have the same distribution.
+Equivalently, the same factorization can be read directly as a product of $K$ identical one-draw failure probabilities from \cref{eq:app-one-draw-failure}.
+Combining \cref{eq:app-all-fail-expectation,eq:app-binary-finite-k} gives the main-text identity in \cref{eq:binary-all-fail}.
+
+\paragraph{Candidate coverage and Pass@$K$.}
+The event that the pool contains at least one successful solver is the complement of the all-fail event.
+Under the same sampling protocol,
+\begin{equation}
+  \Pr(\text{at least one of the $K$ solvers succeeds}\mid x)
+  =
+  1-
+  \left(
+    \mathbb E_{\theta\sim q_\phi}[F(\theta,x)]
+  \right)^K.
+  \label{eq:app-pass-k}
+\end{equation}
+This probability is the candidate-coverage or Pass@$K$ target used in the paper.
+It measures whether the pool contains a correct candidate; it does not model whether the retained selector identifies that candidate.
+The outer expectation over $x$ in \cref{eq:exact-finite-k-objective} averages this conditional all-fail probability over the problem distribution.
+
+\paragraph{Direct Monte Carlo estimator for the binary target.}
+One independently sampled pool $\theta_{1:K}$ yields
+\begin{equation}
+  \widehat R_K^{F}(x;\theta_{1:K})
+  =
+  \prod_{k=1}^K F(\theta_k,x).
+  \label{eq:app-hard-direct-estimator}
+\end{equation}
+By \cref{eq:app-all-fail-expectation}, this estimator is unbiased for the exact all-fail probability.
+It is itself binary: it returns one when the sampled pool contains no successful solver and zero otherwise.
+Computing it requires executing all $K$ sampled solvers.
+
+\paragraph{Differentiable replacement.}
+The hard indicator $F$ does not provide the pathwise gradient used to train the posterior.
+We replace it with the differentiable failure score $f(\theta,x)\in[0,1]$ and define $\bar f_\phi(x)=\mathbb E_{\theta\sim q_\phi}[f(\theta,x)]$.
+For $K$ independent posterior draws, define the direct estimator
+\begin{equation}
+  \widehat R_K^{f}(x;\theta_{1:K})
+  =
+  \prod_{k=1}^K f(\theta_k,x).
+  \label{eq:app-soft-direct-estimator}
+\end{equation}
+Independence gives
+\begin{align}
+  \mathbb E_{\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi}
+  [\widehat R_K^{f}(x;\theta_{1:K})]
+  & =
+  \prod_{k=1}^K
+  \mathbb E_{\theta_k\sim q_\phi}[f(\theta_k,x)]
+  \notag\\
+  & =
   \bar f_\phi(x)^K.
   \label{eq:app-soft-finite-k}
+\end{align}
+Thus, the $K$-draw product is an unbiased estimator of the differentiable finite-$K$ data term.
+Unlike \cref{eq:app-hard-direct-estimator}, the soft product in \cref{eq:app-soft-direct-estimator} is not an event indicator.
+Consequently, $\bar f_\phi(x)^K$ is a smooth training target rather than a literal all-fail probability unless $f=F$ or $f$ has an additional probabilistic interpretation.
+
+\paragraph{Why one draw cannot be reused directly.}
+Suppose that one posterior draw is used in all $K$ factors.
+The resulting estimator is $f(\theta,x)^K$, whose expectation is
+\begin{equation}
+  \mathbb E_{\theta\sim q_\phi}[f(\theta,x)^K],
+  \label{eq:app-reused-draw}
 \end{equation}
-Thus, the $K$-draw product is an unbiased estimator of the finite-$K$ data term.
-Reusing one draw estimates $\mathbb E[f(\theta,x)^K]$.
-For $K>1$, Jensen's inequality gives $\mathbb E[f^K]\geq\mathbb E[f]^K$, with equality only in special cases.
-In the binary limit, $F^K=F$, so the reused-draw objective reduces to the one-draw failure probability.
+not $\bar f_\phi(x)^K$.
+For $K>1$, the map $u\mapsto u^K$ is convex on $[0,1]$, so Jensen's inequality gives
+\begin{equation}
+  \mathbb E_{\theta\sim q_\phi}[f(\theta,x)^K]
+  \geq
+  \left(
+    \mathbb E_{\theta\sim q_\phi}[f(\theta,x)]
+  \right)^K.
+  \label{eq:app-reused-draw-jensen}
+\end{equation}
+For $K>1$, equality holds when $f(\theta,x)$ is constant almost surely under $q_\phi$; it need not hold during posterior learning.
+In the binary case, $F(\theta,x)^K=F(\theta,x)$, so reusing one draw estimates the one-draw failure probability rather than the $K$-draw all-fail probability.
+This distinction motivates the Fenchel representation in \cref{app:fenchel-proof}: it preserves the finite-$K$ target while making the posterior-dependent update estimable with one fresh draw for a fixed dual state.
+
+\paragraph{Scope of the derivation.}
+The $K$-th power in \cref{eq:binary-all-fail,eq:app-binary-finite-k} relies on independent posterior draws.
+If the candidate solvers are sampled jointly with correlation, \cref{eq:app-all-fail-expectation} remains valid, but the expectation does not generally factor into a $K$-th power.
+Our notation also treats solver execution as deterministic conditional on $(\theta,x)$.
+If the solver uses additional randomness $\xi$, one may instead write $F(\theta,\xi,x)$ and draw the pairs $(\theta_k,\xi_k)$ independently; the same derivation then applies to the augmented sampling distribution.
 
 \subsection{Derivation of the Fenchel representation}
 \label{app:fenchel-proof}
@@ -259,4 +378,3 @@ The identity $\Gamma_t=D_{\psi_K}(\lambda_t,\lambda_t^\star)$ and the same integ
 The bounds separate sampling noise from drift in the posterior failure rate.
 Increasing $\beta$ reduces the noise term but increases the lag term $\delta/(1-\beta)$.
 These results guarantee tracking of the dual state, not convergence of the full neural-network optimization.
-

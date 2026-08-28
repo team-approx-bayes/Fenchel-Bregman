@@ -19,23 +19,23 @@ Our objective targets candidate coverage.
 The retained selector determines which candidate the system returns.
 
 For problem $x$, let $F(\theta,x)\in\{0,1\}$ denote the exact failure indicator for solver $\theta$ at depth $D$, with $F=1$ for failure.
-For independent draws $\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi$,
-\begin{align}
+For fixed $x$, sampling $\theta\sim q_\phi$ makes $F(\theta,x)$ a Bernoulli random variable.
+Because $F$ is an indicator, its failure probability equals its expectation, $\Pr(F(\theta,x)=1)=\mathbb E_{\theta\sim q_\phi}[F(\theta,x)]$.
+For independent draws $\theta_{1:K}\overset{\mathrm{iid}}{\sim}q_\phi$, this gives
+\begin{equation}
   \Pr(\text{all $K$ solvers fail}\mid x)
-  & =
-  \mathbb E_{\theta_{1:K}}
-  \left[
-    \prod_{k=1}^K F(\theta_k,x)
-  \right]
-  \notag\\
-  & =
+  =
+  \prod_{k=1}^K
+  \Pr\!\left(F(\theta_k,x)=1\right)
+  =
   \left(
     \mathbb E_{\theta\sim q_\phi}[F(\theta,x)]
   \right)^K.
   \label{eq:binary-all-fail}
-\end{align}
-The product is the all-fail indicator.
-Independence yields the $K$-th power, so minimizing it maximizes Pass@$K$.
+\end{equation}
+The first equality uses independence across posterior draws, and the second uses the indicator identity and their identical distribution.
+Thus, minimizing the all-fail probability maximizes the probability that the candidate pool contains at least one success, or Pass@$K$.
+A step-by-step derivation, including the underlying probability space and the role of independence, appears in \cref{app:finite-k-details}.
 
 This all-fail probability induces the regularized exact target
 \begin{equation}
@@ -172,4 +172,3 @@ Direct finite-$K$ training uses $K$ solver executions per update.
 The exact min--max reformulation makes the posterior update a one-draw expectation once the current dual state is held fixed.
 The Bregman step gives a closed-form EMA update for that state without additional solver executions.
 The practical update follows the finite-$K$ data gradient to the extent that $\widehat f_{x,t-1}$ tracks $\bar f_\phi(x)$.
-

@@ -1,5 +1,10 @@
 \section{Limitations}
 \label{sec:limitations}
-% Discuss tracker error, non-informative diagonal covariance, reused Sudoku
-% evaluation subsets, incomplete cross-task evidence, and fixed deployment protocol.
 
+Our analysis and experiments focus on a controlled setting for finite-$K$ posterior learning.
+The binary all-fail probability is exact, as is the Fenchel representation of the differentiable finite-$K$ objective.
+Practical training uses a differentiable failure score $f$ and a lagged per-problem failure estimate, so its agreement with binary coverage and the finite-$K$ gradient depends on the choice of $f$ and tracking accuracy, respectively.
+We also assume fixed $K$ and $D$, independent posterior draws, and a retained selector, leaving adaptive budgets, correlated candidates, and joint selector training for future work.
+Maintaining one failure estimate per training problem suits revisited finite datasets but may require amortization for very large or streaming data.
+Finally, although the formulation supports any differentiably reparameterizable posterior, our experiments use IVON's diagonal Gaussian on two recursive reasoning backbones and a limited set of structured reasoning tasks.
+Further evaluation is needed to establish whether the gains transfer to richer posterior families and larger language-based reasoning models.
