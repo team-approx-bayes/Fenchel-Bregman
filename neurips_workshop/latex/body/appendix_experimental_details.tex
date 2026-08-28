@@ -11,10 +11,9 @@ and ARC-AGI-2.}
 \paragraph{Maze-Hard candidate-coverage protocol.}
 We evaluate FB, ordinary IVON, PTRM, and W-PTRM on the same 1,000-problem test
 split with the TRM backbone, reasoning depth 16, and candidate budgets up to
-ten. FB, PTRM, and W-PTRM use ordered prefixes from saved $K_{\mathrm{eval}}=10$
-banks under seed-0 reset sampling. The reported IVON values use the updated
-evaluation at $K\in\{1,2,4,6,8,10\}$. The earlier IVON bank produced on
-August 26, 2026 is deprecated and excluded from the reported comparison.
+ten. All four methods use ordered prefixes from saved
+$K_{\mathrm{eval}}=10$ banks under seed-0 reset sampling. For IVON, we
+evaluate the EMA model state stored in the seed-0 checkpoint.
 
 \subsection{Baseline details}
 
@@ -54,7 +53,5 @@ settings, solver-call accounting, wall-clock measurement, and peak-memory
 measurement.}
 
 \paragraph{Ordinary-IVON baseline.}
-We report the updated IVON Pass@$K$ evaluation designated on August 27, 2026.
-The previous local HPO, checkpoint, and candidate bank are deprecated and are
-not used for the reported curve.
-
+Ordinary IVON uses the shared released-checkpoint initialization, task data,
+update budget, and fixed $K=10$ test protocol described above.

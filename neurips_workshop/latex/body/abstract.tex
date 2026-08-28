@@ -1,12 +1,8 @@
 \begin{abstract}
-Multi-sample reasoning generates several candidate solutions and selects among them at inference time.
-Reasoning models use training objectives defined for a single solver execution, although deployment evaluates a candidate pool under a fixed budget.
-We place a regularized posterior over solver parameters, using each posterior sample as one candidate solver.
-For a prescribed pool size $K$ and reasoning depth, we minimize a differentiable surrogate of the probability that all $K$ candidates fail.
-An unbiased stochastic estimate of this finite-$K$ surrogate requires $K$ solver executions per update.
-To address this, we derive an exact Fenchel representation of the surrogate whose primal update uses one posterior draw given a per-problem dual state.
-We also track this state with a closed-form Bregman update and one running failure estimate per problem.
-Together, this optimizes the finite-$K$ surrogate using one posterior draw per update.
-Across challenging reasoning benchmarks, we validate finite-$K$ posterior learning improves multi-sample performance.
+Multi-sample reasoning improves reliability by generating several candidate solutions, increasing the chance that at least one succeeds within a limited inference budget.
+The candidate pool's success depends on which solver variants it contains, so we model their distribution as a regularized posterior over solver parameters.
+Each posterior draw instantiates one candidate solver, and we optimize the posterior to increase the chance that at least one candidate succeeds.
+Direct optimization of this objective requires several sampled solvers in every update, so we use a Fenchel reformulation and a Bregman update to learn from one posterior draw and a running summary of each problem's failures.
+This keeps the number of solver executions per training update independent of the size of the candidate pool.
+Across challenging reasoning tasks, our method improves candidate coverage and, in a controlled comparison, achieves performance comparable to multi-draw training with lower training cost.
 \end{abstract}
-

@@ -1,7 +1,66 @@
 \section{Introduction}
 \label{sec:introduction}
-% Motivate posterior learning under prescribed K, depth, and selector.
-% Start from the finite-K posterior objective; do not introduce a joint
-% posterior-policy objective.
-% End with a claim-evidence-aligned contribution list.
 
+Complex reasoning problems often admit several solution paths, and a single
+solver execution can fail even when another would succeed. Multi-sample
+inference reduces this risk by generating several candidate solutions and
+selecting or aggregating them, as in repeated sampling, self-consistency, and
+verifier-guided
+reasoning~\citep{chen2021codex,wang2023selfconsistency,cobbe2021verifiers}.
+With a limited inference budget, the candidate pool succeeds when at least one
+candidate solves the problem. Repeated sampling can substantially expand
+problem coverage, although its gains depend on how candidates are generated
+and selected~\citep{brown2024monkeys,snell2024scaling,wu2025inferencescaling}.
+Recent training methods therefore score groups of outputs jointly or tailor
+fine-tuning to multi-sample
+selection~\citep{pmlr-v267-tang25o,walder2025pkpo,chow2025inferenceaware,chen2025rethinking}.
+This line of work treats candidate-pool success as a training target rather
+than only an inference-time metric.
+
+A posterior over solver parameters naturally supplies the multiple candidates
+used at inference. Each posterior draw instantiates a complete solver that
+produces one candidate solution, so repeated draws assemble the inference pool
+from a single learned distribution. We learn this distribution as a
+regularized posterior, combining task loss with regularization toward a
+prior~\citep{bissiri2016general,blundell2015weight,shen2024variational}.
+The posterior's probability mass determines which solver variants appear in
+the pool and how often they are sampled, so optimizing it directly shapes the
+candidate generator used at inference.
+Variational posterior learning typically optimizes the expected loss of one
+sampled model. For multi-sample inference, we instead introduce finite-$K$
+posterior learning, which trains the regularized posterior to make a finite
+candidate pool more likely to contain at least one successful solution. Direct
+optimization of this pool-level objective requires several posterior-sampled
+solvers in every update, so its cost grows with the target pool size.
+
+We reduce this cost with a Fenchel reformulation and a Bregman update that
+require only one posterior draw per training update. The Fenchel reformulation
+expresses the pool-level objective so that one sampled solver can update the
+posterior when its failure is weighted by how likely the other candidates are
+to fail. The required weight differs across problems and changes as the
+posterior learns because sampled solvers do not fail equally often on every
+problem. Estimating it from several fresh draws would cancel the computational
+saving. We therefore maintain, for each training problem, a running summary of
+how often its sampled solvers fail. A closed-form Bregman update refreshes this
+summary after each observed failure, so the current summary guides the
+posterior update and the new observation informs the next visit. The procedure
+needs neither an inner optimization loop nor another solver execution. Each
+update uses one sampled solver regardless of the candidate-pool size.
+
+Across challenging reasoning tasks, our method improves candidate coverage
+and, in a controlled comparison, achieves performance comparable to direct
+multi-draw training with lower training cost. Our contributions are:
+
+\begin{itemize}
+  \item We formulate finite-$K$ posterior learning for reasoning, aligning a
+  regularized posterior over solver parameters with the collective success of
+  the finite candidate pool used at inference.
+
+  \item We derive an exact Fenchel reformulation of the differentiable
+  finite-$K$ objective that enables posterior updates from one sampled solver,
+  guided by a problem-specific summary of posterior failures.
+
+  \item We derive a closed-form Bregman update for tracking these failure
+  summaries and analyze how sampling noise and posterior drift affect their
+  tracking error and the resulting finite-$K$ objective gap.
+\end{itemize}
