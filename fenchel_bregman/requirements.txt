@@ -1,0 +1,14 @@
+torch>=2.0
+numpy
+scipy>=1.11
+PyYAML>=6.0
+tqdm
+adam-atan2
+einops
+coolname
+pydantic
+wandb
+omegaconf
+hydra-core
+ivon-opt==0.1.3
+evon @ git+https://github.com/team-approx-bayes/evon.git@f51ee25074cfdf3b7c1a665d744ff39930d602e4

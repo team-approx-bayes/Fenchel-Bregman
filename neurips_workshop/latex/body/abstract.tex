@@ -1,8 +1,0 @@
-\begin{abstract}
-Multi-sample reasoning improves reliability by generating several candidate solutions, increasing the chance that at least one succeeds within a limited inference budget.
-The candidate pool's success depends on which solver variants it contains, so we model their distribution as a regularized posterior over solver parameters.
-Each posterior draw instantiates one candidate solver, and we optimize the posterior to increase the chance that at least one candidate succeeds.
-Direct optimization of this objective requires several sampled solvers in every update, so we use a Fenchel reformulation and a Bregman update to learn from one posterior draw and a running summary of each problem's failures.
-This keeps the number of solver executions per training update independent of the size of the candidate pool.
-Across challenging reasoning tasks, our method improves candidate coverage and, in a controlled comparison, achieves performance comparable to multi-draw training with lower training cost.
-\end{abstract}
