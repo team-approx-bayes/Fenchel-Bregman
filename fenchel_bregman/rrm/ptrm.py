@@ -953,6 +953,101 @@ def parameter_mean_abs(model: nn.Module) -> float:
     return absolute_sum / element_count
 
 
+class ParameterPerturbationBank:
+    """A fixed bank of Gaussian dense-parameter candidates."""
+
+    def __init__(
+        self,
+        *,
+        parameters: tuple[nn.Parameter, ...],
+        originals: tuple[Tensor, ...],
+        deltas: tuple[tuple[Tensor, ...], ...],
+        relative_scale: float,
+        absolute_scale: float,
+    ) -> None:
+        self.parameters = parameters
+        self.originals = originals
+        self.deltas = deltas
+        self.relative_scale = relative_scale
+        self.absolute_scale = absolute_scale
+
+    @classmethod
+    @torch.no_grad()
+    def sample(
+        cls,
+        model: nn.Module,
+        *,
+        candidate_count: int,
+        relative_scale: float,
+        generator: torch.Generator | None = None,
+    ) -> "ParameterPerturbationBank":
+        """Sample candidates once relative to the model's mean absolute value."""
+
+        if isinstance(candidate_count, bool) or candidate_count < 1:
+            raise ValueError("parameter candidate count must be positive")
+        if not math.isfinite(float(relative_scale)) or relative_scale < 0:
+            raise ValueError("parameter relative scale must be finite and non-negative")
+        parameters = tuple(
+            parameter
+            for parameter in model.parameters()
+            if parameter.requires_grad and parameter.is_floating_point()
+        )
+        if not parameters:
+            raise ValueError("model has no trainable floating parameters")
+        originals = tuple(parameter.detach().clone() for parameter in parameters)
+        absolute_scale = float(relative_scale) * parameter_mean_abs(model)
+        deltas = tuple(
+            tuple(
+                torch.randn(
+                    parameter.shape,
+                    dtype=parameter.dtype,
+                    device=parameter.device,
+                    generator=generator,
+                ).mul_(absolute_scale)
+                for parameter in parameters
+            )
+            for _candidate_index in range(candidate_count)
+        )
+        return cls(
+            parameters=parameters,
+            originals=originals,
+            deltas=deltas,
+            relative_scale=float(relative_scale),
+            absolute_scale=absolute_scale,
+        )
+
+    def __len__(self) -> int:
+        return len(self.deltas)
+
+    @torch.no_grad()
+    def apply(self, candidate_index: int) -> None:
+        """Restore the center and apply one pre-sampled candidate delta."""
+
+        if (
+            isinstance(candidate_index, bool)
+            or candidate_index < 0
+            or candidate_index >= len(self)
+        ):
+            raise IndexError("parameter candidate index is out of range")
+        for parameter, original, delta in zip(
+            self.parameters,
+            self.originals,
+            self.deltas[candidate_index],
+            strict=True,
+        ):
+            parameter.copy_(original)
+            parameter.add_(delta)
+
+    @torch.no_grad()
+    def restore(self) -> None:
+        """Restore every bound parameter to its exact center value."""
+
+        for parameter, original in zip(
+            self.parameters, self.originals, strict=True
+        ):
+            parameter.copy_(original)
+
+
 class PTRMAdapter:
     """Translate TRM carries, losses, and posterior candidates to RRM outputs."""
 
@@ -961,7 +1056,12 @@ class PTRMAdapter:
     def build_model(
         self, task: str, preset: str, metadata: Mapping[str, Any]
     ) -> TinyRecursiveReasoningModel:
-        if task not in ("maze-hard", "sudoku-extreme"):
+        if task not in (
+            "maze-hard",
+            "sudoku-extreme",
+            "arc-agi-1",
+            "arc-agi-2",
+        ):
             raise ValueError(f"PTRM does not support task {task!r}")
         arch = dict(metadata.get("arch", metadata))
         for key in ("batch_size", "seq_len", "num_puzzle_identifiers", "vocab_size"):
