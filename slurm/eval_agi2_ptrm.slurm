@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval-agi2-ptrm
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --gpus=4
 #SBATCH --output=slurm/logs/%x-%j.out
 
@@ -22,7 +22,7 @@ export DATASET="${DATASET:-${DATA_ROOT}/arc2concept-aug-1000}"
 export OUTPUT_DIR="${OUTPUT_DIR:-${FB_DIR}/artifacts/agi-2/ptrm}"
 export CANDIDATE_COUNT="${CANDIDATE_COUNT:-25}"
 export DEPTH="${DEPTH:-16}"
-export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-32}"
+export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-256}"
 export LATENT_NOISE_SCALE="${LATENT_NOISE_SCALE:-0.2}"
 export SEED="${SEED:-0}"
 

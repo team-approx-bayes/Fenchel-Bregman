@@ -108,6 +108,7 @@ class ArcEvaluationConfig:
     wandb_name: str | None
     wandb_group: str | None
     wandb_log_every: int
+    resume: bool
 
     @property
     def method(self) -> str:
@@ -181,6 +182,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("WANDB_MODE", "").lower() in ("disabled", "offline", "dryrun"),
         help="disable wandb logging",
     )
+    parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("ARC_RESUME", "1").lower() not in ("0", "false", "no"),
+        help="resume from per-rank progress in OUTPUT_DIR if present "
+        "(default: on; disable with --no-resume or ARC_RESUME=0)",
+    )
     return parser
 
 
@@ -233,7 +241,13 @@ def config_from_args(
     if not config_path.is_file():
         raise FileNotFoundError(f"ARC model config is not a file: {config_path}")
     output = args.output.expanduser().resolve(strict=False)
-    if rank == 0 and output.exists() and (not output.is_dir() or any(output.iterdir())):
+    resume = bool(args.resume)
+    if (
+        not resume
+        and rank == 0
+        and output.exists()
+        and (not output.is_dir() or any(output.iterdir()))
+    ):
         raise FileExistsError(f"Refusing to overwrite non-empty output: {output}")
     return ArcEvaluationConfig(
         task=str(args.task),
@@ -256,6 +270,7 @@ def config_from_args(
         wandb_name=args.wandb_name,
         wandb_group=args.wandb_group,
         wandb_log_every=max(1, int(args.wandb_log_every)),
+        resume=resume,
     )
 
 
@@ -893,6 +908,95 @@ def _gather_predictions(
     return merged
 
 
+def _prediction_payload(prediction: ArcPrediction) -> dict[str, Any]:
+    return {
+        "task_name": prediction.task_name,
+        "input_hash": prediction.input_hash,
+        "grid": prediction.grid,
+        "q_logit": prediction.q_logit,
+        "row_index": prediction.row_index,
+    }
+
+
+def _progress_path(output: Path, rank: int) -> Path:
+    return output / "rank_predictions" / f"rank_{rank}_progress.pkl"
+
+
+def _write_rank_progress(
+    output: Path, *, rank: int, batch_count: int, predictions: Sequence[ArcPrediction]
+) -> Path:
+    """Atomically persist one rank's in-progress predictions for resuming."""
+
+    path = _progress_path(output, rank)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    payload = {
+        "batch_count": batch_count,
+        "predictions": [_prediction_payload(p) for p in predictions],
+    }
+    with temporary.open("wb") as handle:
+        pickle.dump(payload, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    temporary.replace(path)
+    return path
+
+
+def _read_rank_progress(
+    output: Path, rank: int
+) -> tuple[int, list[ArcPrediction]]:
+    """Reload one rank's in-progress predictions, or (0, []) if none."""
+
+    path = _progress_path(output, rank)
+    if not path.is_file():
+        return 0, []
+    try:
+        with path.open("rb") as handle:
+            payload = pickle.load(handle)
+    except Exception:
+        return 0, []
+    if not isinstance(payload, Mapping):
+        return 0, []
+    batch_count = payload.get("batch_count")
+    raw_predictions = payload.get("predictions")
+    if (
+        isinstance(batch_count, bool)
+        or not isinstance(batch_count, int)
+        or batch_count < 0
+        or not isinstance(raw_predictions, list)
+    ):
+        return 0, []
+    predictions: list[ArcPrediction] = []
+    for value in raw_predictions:
+        if not isinstance(value, Mapping):
+            return 0, []
+        try:
+            grid = _arc_grid(value.get("grid")).copy()
+            score = float(value.get("q_logit"))
+            row_index = value.get("row_index")
+            task_name = value.get("task_name")
+            input_hash = value.get("input_hash")
+        except (TypeError, ValueError):
+            return 0, []
+        if (
+            not isinstance(task_name, str)
+            or not isinstance(input_hash, str)
+            or not input_hash
+            or isinstance(row_index, bool)
+            or not isinstance(row_index, int)
+            or not math.isfinite(score)
+        ):
+            return 0, []
+        predictions.append(
+            ArcPrediction(
+                task_name=task_name,
+                input_hash=input_hash,
+                grid=grid,
+                q_logit=score,
+                row_index=row_index,
+            )
+        )
+    return batch_count, predictions
+
+
 def _write_rank_predictions(
     output: Path, *, rank: int, predictions: Sequence[ArcPrediction]
 ) -> Path:
@@ -1165,8 +1269,10 @@ def run_arc_evaluation(
     ):
         raise ValueError("exactly one ARC sampling method must be selected")
     if context.primary:
-        if config.output.exists() and (
-            not config.output.is_dir() or any(config.output.iterdir())
+        if (
+            not config.resume
+            and config.output.exists()
+            and (not config.output.is_dir() or any(config.output.iterdir()))
         ):
             raise FileExistsError(
                 f"Refusing to overwrite non-empty output: {config.output}"
@@ -1195,6 +1301,16 @@ def run_arc_evaluation(
 
     rank_predictions: list[ArcPrediction] = []
     batch_count = 0
+    if config.resume:
+        batch_count, rank_predictions = _read_rank_progress(
+            config.output, context.rank
+        )
+        if batch_count and context.primary:
+            print(
+                f"[resume] rank {context.rank}: loaded {batch_count} completed "
+                f"batches ({len(rank_predictions)} predictions)",
+                flush=True,
+            )
     wandb_run = _init_wandb(config, context)
     row_count = int(dataset.inputs.shape[0])
     try:
@@ -1206,6 +1322,8 @@ def run_arc_evaluation(
                 world_size=context.world_size,
             )
         ):
+            if batch_index < batch_count:
+                continue  # already completed in a previous (killed) run
             if config.max_batches is not None and batch_index >= config.max_batches:
                 break
             device_batch = {
@@ -1235,7 +1353,14 @@ def run_arc_evaluation(
                     candidate_scores,
                 )
             )
-            batch_count += 1
+            batch_count = batch_index + 1
+            if config.resume:
+                _write_rank_progress(
+                    config.output,
+                    rank=context.rank,
+                    batch_count=batch_count,
+                    predictions=rank_predictions,
+                )
             # all_gather_object is a collective: every rank must participate on
             # the same iterations, so the decision to log must not depend on
             # wandb_run (which is only set on the primary rank).
