@@ -11,8 +11,10 @@
 # Optional overrides (via --export): DATASET, OUTPUT_DIR, CANDIDATE_COUNT,
 #   DEPTH, GLOBAL_BATCH_SIZE, PARAMETER_PERTURBATION_SCALE, SEED, MAX_BATCHES, CONFIG.
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/_common.slurm"
+# sbatch spools this script to /var/spool/slurmd, so BASH_SOURCE cannot be used
+# to locate _common.slurm; use the absolute project path instead.
+PROJECT_ROOT="${PROJECT_ROOT:-/data1/rkp00055/adrian/projects/posterior-decision-reasoning}"
+source "${PROJECT_ROOT}/slurm/_common.slurm"
 
 : "${CHECKPOINT:?Set CHECKPOINT to the ARC-AGI-1 PTRM checkpoint (sbatch --export=ALL,CHECKPOINT=...)}"
 
