@@ -34,6 +34,7 @@ echo "  4) Environments    (create venvs and install dependencies)"
 echo "  5) Datasets        (build ARC-AGI-1/2 and/or Sudoku/Maze into DATA_ROOT)"
 echo "  6) adam-atan2      (build CUDA optimizer for this GPU architecture)"
 echo "  7) Verify          (check envs, CUDA, datasets, imports)"
+echo "  8) TRM checkpoints (download official ARC-AGI-1/2 TRM weights into models/)"
 echo "  q) Quit"
 echo
 read -r -p "Choice [1]: " choice </dev/tty
@@ -102,6 +103,7 @@ case "${choice}" in
     run_step "install_envs.sh"
     choose_datasets
     run_step "build_adam_atan2.sh" both
+    run_step "download_trm_checkpoints.sh"
     run_step "verify_setup.sh"
     echo
     ok "Full setup complete. See README.md for training commands."
@@ -141,6 +143,7 @@ case "${choice}" in
     esac
     ;;
   7) run_step "verify_setup.sh" ;;
+  8) run_step "download_trm_checkpoints.sh" ;;
   q|Q) info "Bye." ;;
   *) die "Unknown choice '${choice}'" ;;
 esac

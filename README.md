@@ -18,8 +18,10 @@ posterior-decision-reasoning/
 │       ├── build_arc_datasets.sh       # ARC-AGI-1 + ARC-AGI-2 into DATA_ROOT
 │       ├── build_table1_datasets.sh    # Sudoku-Extreme + Maze-Hard into DATA_ROOT
 │       ├── build_adam_atan2.sh # Build patched adam-atan2 CUDA backend
+│       ├── download_trm_checkpoints.sh # Official TRM ARC-AGI-1/2 weights into models/
 │       └── verify_setup.sh     # End-to-end sanity checks
 ├── data/                       # Built datasets (default location; git-ignored)
+├── models/                     # Downloaded checkpoints (git-ignored)
 ├── TinyRecursiveModels/        # Upstream TRM (SamsungSAILMontreal) — dataset builders + TRM training
 └── fenchel_bregman/            # RRM implementation: FPRM / PTRM / GRAM + FB objective
     ├── rrm/
@@ -58,8 +60,24 @@ bash setup/scripts/install_envs.sh
 bash setup/scripts/build_arc_datasets.sh /path/to/data
 bash setup/scripts/build_table1_datasets.sh /path/to/data
 bash setup/scripts/build_adam_atan2.sh both
+bash setup/scripts/download_trm_checkpoints.sh   # official TRM weights -> models/
 bash setup/scripts/verify_setup.sh
 ```
+
+### Pretrained TRM checkpoints
+
+`download_trm_checkpoints.sh` pulls the official ARC Prize verification TRM
+weights from <https://huggingface.co/arcprize/trm_arc_prize_verification> into
+`models/` (git-ignored):
+
+| Checkpoint | Directory | Weights | Trained on |
+|---|---|---|---|
+| ARC-AGI-1 | `models/arc_v1_public/` | `step_518071` (1.8 GB) | ARC-AGI-1 |
+| ARC-AGI-2 | `models/arc_v2_public/` | `step_723914` (2.5 GB) | ARC-AGI-2 |
+
+Each directory also contains the matching `all_config.yaml`, so the checkpoints
+can be passed straight to the `rrm/sh/agi-{1,2}/` launchers (or the SLURM
+scripts in `slurm/`) via `CHECKPOINT=models/arc_v1_public/step_518071` etc.
 
 ## Datasets
 

@@ -6,3 +6,4 @@ __pycache__/
 .venv/
 setup/setup.env
 artifacts/
+models/
