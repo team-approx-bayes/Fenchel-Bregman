@@ -26,6 +26,20 @@ PROJECT_ROOT="${PROJECT_ROOT:-/data1/rkp00055/adrian/projects/posterior-decision
 FB_DIR="${PROJECT_ROOT}/fenchel_bregman"
 DATA_ROOT="${DATA_ROOT:-${PROJECT_ROOT}/data}"
 
+# 6. Local overrides (wandb project, etc.) from the repo-root .env, if present.
+#    Values already set in the environment take precedence over .env.
+if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+  while IFS='=' read -r key value; do
+    # skip comments and blank lines
+    [[ "${key}" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${key// }" ]] && continue
+    # only set if not already present in the environment
+    if [[ -z "${!key+x}" ]]; then
+      export "${key}=${value}"
+    fi
+  done < "${PROJECT_ROOT}/.env"
+fi
+
 # Use the fenchel_bregman uv venv python
 export PYTHON_BIN="${PYTHON_BIN:-${FB_DIR}/.venv/bin/python}"
 

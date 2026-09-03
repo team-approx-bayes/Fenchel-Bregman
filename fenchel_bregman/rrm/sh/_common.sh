@@ -5,6 +5,19 @@ RRM_PYTHON_BIN="${PYTHON_BIN:-python}"
 RRM_DEVICE="${DEVICE:-cuda}"
 export PYTHONPATH="${RRM_PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
+# Load repo-root .env (wandb project, etc.) if present; existing env wins.
+_REPO_ENV="${RRM_PROJECT_ROOT}/../.env"
+if [[ -f "${_REPO_ENV}" ]]; then
+  while IFS='=' read -r key value; do
+    [[ "${key}" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${key// }" ]] && continue
+    if [[ -z "${!key+x}" ]]; then
+      export "${key}=${value}"
+    fi
+  done < "${_REPO_ENV}"
+fi
+unset _REPO_ENV
+
 run_table1_evaluation() {
   local model="$1"
   local task="$2"

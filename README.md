@@ -156,6 +156,17 @@ bash rrm/sh/agi-1/ptrm.sh
 Runs write `metrics.json`, `submission.json`, and `resolved_config.json` under
 `OUTPUT_DIR` (default `fenchel_bregman/artifacts/...`).
 
+ARC-AGI evaluation also logs **running metrics to Weights & Biases** while it
+runs — Pass@K, mean Q, and progress/throughput, recomputed after every batch
+over the predictions seen so far. It is on by default and configured via the
+repo-root **`.env`** file (git-ignored; copy `.env.example`) — set
+`WANDB_PROJECT` there once and every SLURM job and local launcher picks it up.
+You can also override per-run with environment variables (`WANDB_PROJECT`,
+`WANDB_NAME`, `WANDB_GROUP`, `WANDB_ENTITY`, `WANDB_LOG_EVERY`), which take
+precedence over `.env`; set `WANDB_MODE=disabled` to turn logging off. The
+`rrm.arc` CLI also exposes matching `--wandb-*` flags. See
+[slurm/README.md](slurm/README.md) for how this is wired into the cluster jobs.
+
 ## GPU notes (GB200 / Blackwell)
 
 This cluster's GPUs are NVIDIA GB200 (compute capability **10.0**, i.e.

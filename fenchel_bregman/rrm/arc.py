@@ -19,6 +19,11 @@ import torch.distributed as dist
 from torch import Tensor, nn
 import yaml
 
+try:  # Optional: running-metrics logging to Weights & Biases.
+    import wandb
+except ImportError:  # pragma: no cover - wandb is an optional dependency
+    wandb = None  # type: ignore[assignment]
+
 from rrm import ptrm
 from rrm.utils import (
     DistributedContext,
@@ -98,6 +103,11 @@ class ArcEvaluationConfig:
     latent_noise_scale: float | None
     parameter_perturbation_scale: float | None
     max_batches: int | None
+    wandb_project: str | None
+    wandb_entity: str | None
+    wandb_name: str | None
+    wandb_group: str | None
+    wandb_log_every: int
 
     @property
     def method(self) -> str:
@@ -138,6 +148,39 @@ def build_parser() -> argparse.ArgumentParser:
     sampling.add_argument("--latent-noise-scale", type=float)
     sampling.add_argument("--parameter-perturbation-scale", type=float)
     parser.add_argument("--max-batches", type=int)
+    wandb_group = parser.add_argument_group("wandb", "Weights & Biases logging")
+    wandb_group.add_argument(
+        "--wandb-project",
+        default=os.environ.get("WANDB_PROJECT", "ptrm-ivon-eval"),
+        help="wandb project (default: env WANDB_PROJECT or 'ptrm-ivon-eval')",
+    )
+    wandb_group.add_argument(
+        "--wandb-entity",
+        default=os.environ.get("WANDB_ENTITY"),
+        help="wandb entity/team (default: env WANDB_ENTITY)",
+    )
+    wandb_group.add_argument(
+        "--wandb-name",
+        default=os.environ.get("WANDB_NAME"),
+        help="wandb run name (default: auto from task/method/checkpoint)",
+    )
+    wandb_group.add_argument(
+        "--wandb-group",
+        default=os.environ.get("WANDB_GROUP"),
+        help="wandb run group (default: env WANDB_GROUP)",
+    )
+    wandb_group.add_argument(
+        "--wandb-log-every",
+        type=int,
+        default=int(os.environ.get("WANDB_LOG_EVERY", "1")),
+        help="log running metrics every N batches (default: 1)",
+    )
+    wandb_group.add_argument(
+        "--wandb-off",
+        action="store_true",
+        default=os.environ.get("WANDB_MODE", "").lower() in ("disabled", "offline", "dryrun"),
+        help="disable wandb logging",
+    )
     return parser
 
 
@@ -208,6 +251,11 @@ def config_from_args(
             None if parameter_scale is None else float(parameter_scale)
         ),
         max_batches=(None if args.max_batches is None else int(args.max_batches)),
+        wandb_project=(None if args.wandb_off else args.wandb_project),
+        wandb_entity=args.wandb_entity,
+        wandb_name=args.wandb_name,
+        wandb_group=args.wandb_group,
+        wandb_log_every=max(1, int(args.wandb_log_every)),
     )
 
 
@@ -829,6 +877,22 @@ def _resolved_config_payload(config: ArcEvaluationConfig) -> dict[str, Any]:
     }
 
 
+def _gather_predictions(
+    rank_predictions: Sequence[ArcPrediction], context: DistributedContext
+) -> list[ArcPrediction]:
+    """Gather every rank's selected predictions onto the primary rank."""
+
+    if context.world_size == 1:
+        return list(rank_predictions)
+    gathered: list[list[ArcPrediction] | None] = [None] * context.world_size
+    dist.all_gather_object(gathered, list(rank_predictions))
+    merged: list[ArcPrediction] = []
+    for shard in gathered:
+        if shard:
+            merged.extend(shard)
+    return merged
+
+
 def _write_rank_predictions(
     output: Path, *, rank: int, predictions: Sequence[ArcPrediction]
 ) -> Path:
@@ -974,6 +1038,116 @@ def _arc_candidates(
     return torch.cat(prediction_parts, dim=1), torch.cat(score_parts, dim=1)
 
 
+def _wandb_run_name(config: ArcEvaluationConfig) -> str:
+    """Build a readable default run name from the evaluation settings."""
+
+    checkpoint_tag = config.checkpoint.stem
+    sampling = (
+        f"noise{config.latent_noise_scale}"
+        if config.latent_noise_scale is not None
+        else f"perturb{config.parameter_perturbation_scale}"
+    )
+    return (
+        f"{config.task}-{config.method}-{checkpoint_tag}"
+        f"-c{config.candidate_count}-d{config.depth}-{sampling}"
+    )
+
+
+def _init_wandb(
+    config: ArcEvaluationConfig, context: DistributedContext
+) -> Any | None:
+    """Initialise a wandb run on the primary rank, or return None."""
+
+    if config.wandb_project is None or not context.primary:
+        return None
+    if wandb is None:
+        raise ImportError(
+            "wandb logging requested but the 'wandb' package is not installed"
+        )
+    return wandb.init(
+        project=config.wandb_project,
+        entity=config.wandb_entity,
+        name=config.wandb_name or _wandb_run_name(config),
+        group=config.wandb_group,
+        job_type="evaluation",
+        config=_resolved_config_payload(config),
+    )
+
+
+def _running_metrics(
+    predictions: Sequence[ArcPrediction],
+    *,
+    test_puzzles: Mapping[str, Any],
+    pass_ks: Sequence[int] = (1, 2, 5, 10, 100, 1000),
+) -> dict[str, float]:
+    """Compute Pass@K and mean-Q over the tasks seen so far (partial coverage).
+
+    Unlike aggregate_arc_predictions, this tolerates tasks that have no
+    predictions yet: those tasks are simply excluded from the running average,
+    so the metric reflects only the tasks evaluated up to this point.
+    """
+
+    # Group predictions by task -> input_hash -> prediction_hash -> [count, qsum].
+    observations: dict[str, dict[str, dict[str, list[Any]]]] = {}
+    for prediction in predictions:
+        task = observations.setdefault(prediction.task_name, {})
+        grid = _arc_grid(prediction.grid)
+        prediction_hash = grid_hash(grid)
+        input_predictions = task.setdefault(prediction.input_hash, {})
+        stats = input_predictions.setdefault(prediction_hash, [0, 0.0])
+        stats[0] += 1
+        stats[1] += _sigmoid(float(prediction.q_logit))
+
+    correct_totals = [0.0 for _ in pass_ks]
+    scored_tasks = 0
+    for task_name, task in observations.items():
+        puzzle = test_puzzles.get(task_name)
+        if not isinstance(puzzle, Mapping):
+            continue
+        test_pairs = puzzle.get("test")
+        if not isinstance(test_pairs, list) or not test_pairs:
+            continue
+        # Only score tasks for which every test pair has at least one prediction.
+        task_correct = [0 for _ in pass_ks]
+        fully_covered = True
+        for pair in test_pairs:
+            if not isinstance(pair, Mapping) or "input" not in pair or "output" not in pair:
+                fully_covered = False
+                break
+            input_hash = grid_hash(_arc_grid(pair["input"]))
+            label_hash = grid_hash(_arc_grid(pair["output"]))
+            candidates = task.get(input_hash)
+            if not candidates:
+                fully_covered = False
+                break
+            ranked = sorted(
+                candidates.items(),
+                key=lambda item: (int(item[1][0]), float(item[1][1]) / int(item[1][0])),
+                reverse=True,
+            )
+            for index, pass_k in enumerate(pass_ks):
+                task_correct[index] += any(
+                    prediction_hash == label_hash
+                    for prediction_hash, _stats in ranked[:pass_k]
+                )
+        if not fully_covered:
+            continue
+        for index, count in enumerate(task_correct):
+            correct_totals[index] += count / len(test_pairs)
+        scored_tasks += 1
+
+    metrics: dict[str, float] = {}
+    if scored_tasks:
+        for index, pass_k in enumerate(pass_ks):
+            metrics[f"ARC/pass@{pass_k}"] = correct_totals[index] / scored_tasks
+    if predictions:
+        metrics["Q/mean"] = sum(_sigmoid(float(p.q_logit)) for p in predictions) / len(
+            predictions
+        )
+    metrics["progress/tasks_scored"] = float(scored_tasks)
+    return metrics
+
+
 def run_arc_evaluation(
     config: ArcEvaluationConfig,
     dataset: ArcDataset,
@@ -1021,6 +1195,8 @@ def run_arc_evaluation(
 
     rank_predictions: list[ArcPrediction] = []
     batch_count = 0
+    wandb_run = _init_wandb(config, context)
+    row_count = int(dataset.inputs.shape[0])
     try:
         for batch_index, batch in enumerate(
             iter_rank_batches(
@@ -1060,6 +1236,31 @@ def run_arc_evaluation(
                 )
             )
             batch_count += 1
+            # all_gather_object is a collective: every rank must participate on
+            # the same iterations, so the decision to log must not depend on
+            # wandb_run (which is only set on the primary rank).
+            do_log = (
+                config.wandb_project is not None
+                and batch_count % config.wandb_log_every == 0
+            )
+            if do_log:
+                gathered = _gather_predictions(rank_predictions, context)
+                if wandb_run is not None:
+                    elapsed = time.perf_counter() - started
+                    processed = min(batch_count * config.global_batch_size, row_count)
+                    metrics = _running_metrics(
+                        gathered, test_puzzles=dataset.test_puzzles
+                    )
+                    metrics.update(
+                        {
+                            "progress/batches": batch_count,
+                            "progress/examples": processed,
+                            "progress/fraction": processed / row_count,
+                            "progress/examples_per_sec": processed / max(elapsed, 1e-9),
+                            "progress/elapsed_sec": elapsed,
+                        }
+                    )
+                    wandb_run.log(metrics, step=batch_count)
     finally:
         if parameter_bank is not None:
             parameter_bank.restore()
@@ -1101,6 +1302,14 @@ def run_arc_evaluation(
     )
     atomic_write_json(config.output / "metrics.json", result.metrics)
     atomic_write_json(config.output / "submission.json", result.submission)
+    if wandb_run is not None:
+        final_metrics = dict(result.metrics)
+        if predictions:
+            final_metrics["Q/mean"] = sum(
+                _sigmoid(p.q_logit) for p in predictions
+            ) / len(predictions)
+        wandb_run.log(final_metrics, step=batch_count)
+        wandb_run.finish()
     return result
 
 

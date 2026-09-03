@@ -1,9 +1,11 @@
 data
 **/vendor
+**/wandb
 .DS_Store
 __pycache__/
 *.pyc
 .venv/
 setup/setup.env
+.env
 artifacts/
 models/
