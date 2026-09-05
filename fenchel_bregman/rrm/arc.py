@@ -490,6 +490,20 @@ def crop_grid(sequence: np.ndarray) -> np.ndarray:
     return (encoded[:rows, :columns].astype(np.int16) - 2).astype(np.uint8)
 
 
+def crop_grid_safe(sequence: np.ndarray) -> np.ndarray:
+    """crop_grid that never yields out-of-range colors.
+
+    A degenerate model prediction can contain non-grid tokens (< 2), which make
+    crop_grid underflow (e.g. token 0 -> 254 as uint8). Such a grid would crash
+    the strict validators downstream. Clipping into [0, 9] keeps the grid valid;
+    it remains a *wrong* answer (its hash will not match the label), it just no
+    longer aborts a long evaluation.
+    """
+
+    grid = crop_grid(sequence).astype(np.int16)
+    return np.clip(grid, 0, 9).astype(np.uint8)
+
+
 def inverse_augmentation(name: str) -> tuple[str, Callable[[np.ndarray], np.ndarray]]:
     """Return the original ARC task name and inverse augmentation function."""
 
@@ -599,8 +613,13 @@ def aggregate_arc_predictions(
         q_logit = float(prediction.q_logit)
         if not math.isfinite(q_logit):
             raise ValueError("ARC prediction Q logit must be finite")
-        grid = _arc_grid(prediction.grid)
-        prediction_hash = grid_hash(grid)
+        try:
+            grid = _arc_grid(prediction.grid)
+            prediction_hash = grid_hash(grid)
+        except ValueError:
+            # A degenerate model prediction (out-of-range colors) is a wrong
+            # answer, not a fatal error; skip it so the run can complete.
+            continue
         task = observations.setdefault(prediction.task_name, {})
         input_predictions = task.setdefault(prediction.input_hash, {})
         stats = input_predictions.setdefault(
@@ -969,7 +988,13 @@ def _read_rank_progress(
         if not isinstance(value, Mapping):
             return 0, []
         try:
-            grid = _arc_grid(value.get("grid")).copy()
+            # Sanitize rather than reject: a degenerate grid (out-of-range
+            # colors from a pre-fix/degenerate prediction) is a wrong answer,
+            # not a reason to discard the whole rank's progress.
+            raw_grid = np.asarray(value.get("grid"), dtype=np.int16)
+            grid = np.clip(raw_grid, 0, 9).astype(np.uint8)
+            if grid.ndim != 2 or min(grid.shape) < 1:
+                return 0, []
             score = float(value.get("q_logit"))
             row_index = value.get("row_index")
             task_name = value.get("task_name")
@@ -1044,7 +1069,13 @@ def _load_rank_predictions(output: Path, *, world_size: int) -> list[ArcPredicti
                 raise ValueError(f"Malformed ARC rank prediction file: {path}")
             try:
                 score = float(q_logit)
-                grid = _arc_grid(value.get("grid")).copy()
+                # Sanitize rather than reject: a degenerate grid (out-of-range
+                # colors from an old/degenerate prediction) is a wrong answer,
+                # not a reason to discard the whole rank's predictions.
+                raw_grid = np.asarray(value.get("grid"), dtype=np.int16)
+                grid = np.clip(raw_grid, 0, 9).astype(np.uint8)
+                if grid.ndim != 2 or min(grid.shape) < 1:
+                    raise ValueError("bad grid shape")
             except (TypeError, ValueError) as error:
                 raise ValueError(
                     f"Malformed ARC rank prediction file: {path}"
@@ -1093,7 +1124,7 @@ def _selected_arc_predictions(
             )
         task_name, restore = inverse_augmentation(dataset.identifier_map[identifier_id])
         original_input = restore(crop_grid(inputs[local_index]))
-        original_prediction = restore(crop_grid(selected_grids[local_index]))
+        original_prediction = restore(crop_grid_safe(selected_grids[local_index]))
         predictions.append(
             ArcPrediction(
                 task_name=task_name,
@@ -1195,8 +1226,11 @@ def _running_metrics(
     observations: dict[str, dict[str, dict[str, list[Any]]]] = {}
     for prediction in predictions:
         task = observations.setdefault(prediction.task_name, {})
-        grid = _arc_grid(prediction.grid)
-        prediction_hash = grid_hash(grid)
+        try:
+            grid = _arc_grid(prediction.grid)
+            prediction_hash = grid_hash(grid)
+        except ValueError:
+            continue  # skip a degenerate prediction rather than abort the run
         input_predictions = task.setdefault(prediction.input_hash, {})
         stats = input_predictions.setdefault(prediction_hash, [0, 0.0])
         stats[0] += 1
