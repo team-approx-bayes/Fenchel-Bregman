@@ -4,7 +4,7 @@ Official implementation of **Train for Many, Update with One: Improving Multi-Sa
 
 👥 **Authors:** Sungjun Lim, Adrian Robert Minut, Nico Carlsen Daheim, Mohammad Emtiyaz Khan, Kyungwoo Song, and Thomas Möllenhoff.
 
-📄 **arXiv:** Coming soon · 🌐 **Project page:** Coming soon
+📄 **arXiv:** [Paper](https://arxiv.org/abs/2610.17735) · 🌐 **Project page:** [Website](https://sungjun98.github.io/projects/fbi/)
 
 [🔍 Overview](#-overview) · [📊 Results](#-main-results) · [🚀 Quick start](#-quick-start) · [🧪 Reproduction](#-reproducing-experiments) · [📁 Code](#-code-layout) · [📚 Citation](#-citation)
 
@@ -125,7 +125,18 @@ Fenchel-Bregman/
 ## 📚 Citation
 
 Please cite the paper if you use this code.
-The arXiv link and BibTeX entry will be added when the preprint is available.
+
+```bibtex
+@misc{lim2026train,
+  title={Train for Many, Update with One: Improving Multi-Sample Reasoning via Fenchel-Bregman Posterior Learning},
+  author={Sungjun Lim and Adrian Robert Minut and Nico Carlsen Daheim and Mohammad Emtiyaz Khan and Kyungwoo Song and Thomas M{\"o}llenhoff},
+  year={2026},
+  eprint={2610.17735},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2610.17735}
+}
+```
 
 ## 🙏 Acknowledgments
 
